@@ -16,7 +16,43 @@ from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
 if not hasattr(__builtins__, 'bytes'):
     bytes = str
 
-OSQUERY_TABLES = ["mounts", "processes"]
+OSQUERY_TABLES = [
+    "acpi_tables", "apparmor_events", "apparmor_profiles", "apt_sources", "arp_cache",
+    "atom_packages", "augeas", "authorized_keys", "azure_instance_metadata",
+    "azure_instance_tags", "block_devices", "bpf_process_events", "bpf_socket_events",
+    "carbon_black_info", "carves", "certificates", "chrome_extension_content_scripts",
+    "chrome_extensions", "cpu_info", "cpu_time", "cpuid", "crontab", "curl",
+    "curl_certificate", "deb_packages", "device_file", "device_hash", "device_partitions",
+    "disk_encryption", "dns_resolvers", "docker_container_envs", "docker_container_fs_changes",
+    "docker_container_labels", "docker_container_mounts", "docker_container_networks",
+    "docker_container_ports", "docker_container_processes", "docker_container_stats",
+    "docker_containers", "docker_image_history", "docker_image_labels", "docker_image_layers",
+    "docker_images", "docker_info", "docker_network_labels", "docker_networks",
+    "docker_version", "docker_volume_labels", "docker_volumes",
+    #"ec2_instance_metadata",
+    #"ec2_instance_tags",
+    "etc_hosts", "etc_protocols", "etc_services", "extended_attributes", "file", "file_events",
+    "firefox_addons", "groups", "hardware_events", "hash", "intel_me_info",
+    "interface_addresses", "interface_details", "interface_ipv6", "iptables", "kernel_info",
+    "kernel_keys", "kernel_modules", "known_hosts", "last", "listening_ports", "load_average",
+    "logged_in_users", "lxd_certificates", "lxd_cluster", "lxd_cluster_members", "lxd_images",
+    "lxd_instance_config", "lxd_instance_devices", "lxd_instances", "lxd_networks",
+    "lxd_storage_pools", "magic", "md_devices", "md_drives", "md_personalities",
+    "memory_array_mapped_addresses", "memory_arrays", "memory_device_mapped_addresses",
+    "memory_devices", "memory_error_info", "memory_info", "memory_map", "mounts",
+    "msr", "npm_packages", "oem_strings", "os_version", "osquery_events", "osquery_extensions",
+    "osquery_flags", "osquery_info", "osquery_packs", "osquery_registry", "osquery_schedule",
+    "pci_devices", "platform_info", "portage_keywords", "portage_packages", "portage_use",
+    "process_envs", "process_events", "process_file_events", "process_memory_map",
+    "process_namespaces", "process_open_files", "process_open_pipes", "process_open_sockets",
+    "processes", "prometheus_metrics", "python_packages", "routes", "rpm_package_files",
+    "rpm_packages", "seccomp_events", "secureboot", "selinux_events", "selinux_settings",
+    "shadow", "shared_memory", "shell_history", "smbios_tables", "socket_events",
+    "ssh_configs", "startup_items", "sudoers", "suid_bin", "syslog_events", "system_controls",
+    "system_info", "systemd_units", "time", "ulimit_info", "uptime", "usb_devices",
+    "user_events", "user_groups", "user_ssh_keys", "users", "yara", "yara_events",
+    "ycloud_instance_metadata", "yum_sources"
+]
 
 class Memory(LoggingMixIn, Operations):
     'Example memory filesystem. Supports only one level of files.'
@@ -105,10 +141,16 @@ class Memory(LoggingMixIn, Operations):
             df = pl.DataFrame(data=data)
             path = "/" + table + ".arrow"
             self.create(path, 0o755)
-            self.write(path, df.write_ipc(None).getvalue(), 0, None)
+            self._write_direct(path, df.write_ipc(None).getvalue())
 
         except Exception as e:
             logging.debug(f"AA DEBUG: osquery error: {e=}")
+
+    def _write_direct(self, path, data):
+        self.data[path] = data
+        self.files[path]['st_size'] = len(self.data[path])
+        return len(data)
+
 
     def read(self, path, size, offset, fh):
         try:
@@ -125,10 +167,10 @@ class Memory(LoggingMixIn, Operations):
             data = self.osqueryi.client.query(f"select * from {table}").response
             if fformat == ".arrow":
                 df = pl.DataFrame(data=data)
-                self.write(path, df.write_ipc(None).getvalue(), 0, None)
+                self._write_direct(path, df.write_ipc(None).getvalue())
             elif fformat == ".json":
                 data = json.dumps(data)
-                self.write(path, str(data).encode('utf-8'), 0, None)
+                self._write_direct(path, str(data).encode('utf-8'))
         except Exception as e:
             logging.debug(f"AA DEBUG: osquery error: {e=}")
 
